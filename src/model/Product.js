@@ -80,7 +80,7 @@ const productSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ["available", "sold", "reserved", "deleted"],
+      enum: ["draft", "available", "sold", "reserved", "deleted"],
       default: "available",
     },
     // Featured/Premium

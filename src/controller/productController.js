@@ -6,6 +6,9 @@ import User from "../model/User.js";
 // @access  Private
 export const createProduct = async (req, res) => {
   try {
+    console.log("📦 Creating product for user:", req.user?.id);
+    console.log("📝 Request body:", JSON.stringify(req.body, null, 2));
+
     const {
       title,
       description,
@@ -15,22 +18,33 @@ export const createProduct = async (req, res) => {
       category,
       location,
       images,
+      status = "available", // Can be 'available' or 'draft'
     } = req.body;
 
-    // Validate required fields
-    if (!title || !description || !price || !category || !location) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide all required fields",
-      });
-    }
+    // For drafts, only title is required
+    if (status === "draft") {
+      if (!title) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a title for the draft",
+        });
+      }
+    } else {
+      // For published products, all fields required
+      if (!title || !description || !price || !category || !location) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide all required fields",
+        });
+      }
 
-    // Validate images
-    if (!images || images.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Please upload at least one image",
-      });
+      // Validate images for published products
+      if (!images || images.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Please upload at least one image",
+        });
+      }
     }
 
     // Create product
@@ -42,25 +56,33 @@ export const createProduct = async (req, res) => {
       condition: condition || "Used",
       category,
       location,
-      images,
+      images: images || [],
       seller: req.user.id,
+      status,
     });
 
-    // Update user's total listings count
-    await User.findByIdAndUpdate(req.user.id, {
-      $inc: { totalListings: 1 },
-    });
+    // Update user's total listings count (only for published products)
+    if (status === "available") {
+      await User.findByIdAndUpdate(req.user.id, {
+        $inc: { totalListings: 1 },
+      });
+    }
 
     // Populate seller info
     await product.populate("seller", "name avatar verified rating");
 
     res.status(201).json({
       success: true,
-      message: "Product created successfully!",
+      message:
+        status === "draft"
+          ? "Draft saved successfully!"
+          : "Product created successfully!",
       product,
     });
   } catch (error) {
-    console.error("Create product error:", error);
+    console.error("❌ Create product error:", error);
+    console.error("❌ Error message:", error.message);
+    console.error("❌ Error stack:", error.stack);
     res.status(500).json({
       success: false,
       message: "Failed to create product",
@@ -431,6 +453,223 @@ export const markAsSold = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update product",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get my products (for authenticated user only)
+// @route   GET /api/products/my-products
+// @access  Private
+export const getMyProducts = async (req, res) => {
+  try {
+    const { status } = req.query;
+
+    const query = { seller: req.user.id };
+
+    // Filter by status if provided
+    if (status && status !== "all") {
+      query.status = status;
+    }
+
+    const products = await Product.find(query)
+      .sort({ createdAt: -1 })
+      .populate("seller", "name avatar verified rating");
+
+    res.status(200).json({
+      success: true,
+      products,
+      count: products.length,
+    });
+  } catch (error) {
+    console.error("❌ Get my products error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get products",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get my drafts
+// @route   GET /api/products/my-drafts
+// @access  Private
+export const getMyDrafts = async (req, res) => {
+  try {
+    const drafts = await Product.find({
+      seller: req.user.id,
+      status: "draft",
+    }).sort({ updatedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      drafts,
+      count: drafts.length,
+    });
+  } catch (error) {
+    console.error("❌ Get my drafts error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get drafts",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Publish draft
+// @route   PUT /api/products/:id/publish
+// @access  Private
+export const publishDraft = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Check ownership
+    if (product.seller.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    // Validate all required fields are present
+    if (
+      !product.title ||
+      !product.description ||
+      !product.price ||
+      !product.category ||
+      !product.location ||
+      !product.images ||
+      product.images.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please complete all required fields before publishing (title, description, price, category, location, and at least one image)",
+      });
+    }
+
+    // Change status to available
+    product.status = "available";
+    await product.save();
+
+    // Update user's total listings count
+    await User.findByIdAndUpdate(req.user.id, {
+      $inc: { totalListings: 1 },
+    });
+
+    await product.populate("seller", "name avatar verified rating");
+
+    res.status(200).json({
+      success: true,
+      message: "Product published successfully!",
+      product,
+    });
+  } catch (error) {
+    console.error("❌ Publish draft error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to publish product",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get products by category
+// @route   GET /api/products/category/:category
+// @access  Public
+export const getProductsByCategory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    const { page = 1, limit = 20, sort = "newest" } = req.query;
+
+    let sortOption = { createdAt: -1 };
+    if (sort === "price-asc") sortOption = { price: 1 };
+    if (sort === "price-desc") sortOption = { price: -1 };
+    if (sort === "popular") sortOption = { views: -1 };
+
+    const query = { category, status: "available" };
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const products = await Product.find(query)
+      .sort(sortOption)
+      .limit(Number(limit))
+      .skip(skip)
+      .populate("seller", "name avatar verified rating");
+
+    const total = await Product.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      products,
+      pagination: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(limit)),
+        limit: Number(limit),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get products by category error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get products",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Search products
+// @route   GET /api/products/search
+// @access  Public
+export const searchProducts = async (req, res) => {
+  try {
+    const { q, page = 1, limit = 20 } = req.query;
+
+    if (!q) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a search query",
+      });
+    }
+
+    const query = {
+      status: "available",
+      $text: { $search: q },
+    };
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const products = await Product.find(query)
+      .sort({ score: { $meta: "textScore" } })
+      .limit(Number(limit))
+      .skip(skip)
+      .populate("seller", "name avatar verified rating");
+
+    const total = await Product.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      products,
+      query: q,
+      pagination: {
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(limit)),
+        limit: Number(limit),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Search products error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to search products",
       error: error.message,
     });
   }

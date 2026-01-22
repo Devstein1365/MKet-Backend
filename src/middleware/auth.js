@@ -14,6 +14,8 @@ export const protect = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
     }
 
+    console.log("🔐 Auth check - Token present:", !!token);
+
     // Check if token exists
     if (!token) {
       return res.status(401).json({
@@ -25,6 +27,7 @@ export const protect = async (req, res, next) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("✅ Token verified for user:", decoded.id);
 
       // Get user from token
       req.user = await User.findById(decoded.id).select("-password");
@@ -36,6 +39,8 @@ export const protect = async (req, res, next) => {
         });
       }
 
+      console.log("👤 User authenticated:", req.user.name);
+
       // Check if user is active
       if (!req.user.isActive) {
         return res.status(403).json({
@@ -46,6 +51,7 @@ export const protect = async (req, res, next) => {
 
       next();
     } catch (error) {
+      console.error("❌ Token verification failed:", error.message);
       return res.status(401).json({
         success: false,
         message: "Invalid or expired token. Please login again.",
