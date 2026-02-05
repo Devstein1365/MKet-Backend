@@ -113,6 +113,7 @@ export const getAllProducts = async (req, res) => {
     // Format products (convert price from kobo to naira for display)
     const formattedProducts = products.map((product) => ({
       ...product,
+      images: JSON.parse(product.images), // Parse images JSON string
       price: product.price / 100, // Convert kobo to naira
       originalPrice: product.originalPrice ? product.originalPrice / 100 : null,
     }));
@@ -192,6 +193,7 @@ export const getProductById = async (req, res) => {
     // Format product (convert price from kobo to naira)
     const formattedProduct = {
       ...product,
+      images: JSON.parse(product.images), // Parse images JSON string
       price: product.price / 100,
       originalPrice: product.originalPrice ? product.originalPrice / 100 : null,
     };
