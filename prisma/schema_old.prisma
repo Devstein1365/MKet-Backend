@@ -1,0 +1,239 @@
+// Prisma Schema for MKET Marketplace
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// USER MODEL
+// ================================
+model User {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(50)
+  email     String   @unique @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  phone     String?  @db.VarChar(20)
+  location  String?  @db.VarChar(100)
+  bio       String?  @db.VarChar(500)
+  
+  // Avatar
+  avatarPublicId String?  @map("avatar_public_id")
+  avatarUrl      String?  @map("avatar_url")
+  
+  // Status & Verification
+  verified  Boolean  @default(false)
+  role      Role     @default(USER)
+  isActive  Boolean  @default(true) @map("is_active")
+  
+  // Statistics
+  totalListings Int     @default(0) @map("total_listings")
+  totalSold     Int     @default(0) @map("total_sold")
+  rating        Decimal @default(0) @db.Decimal(3, 2)
+  totalReviews  Int     @default(0) @map("total_reviews")
+  
+  // Timestamps
+  lastLogin DateTime? @map("last_login")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  
+  // Password Reset
+  resetPasswordToken  String?   @map("reset_password_token")
+  resetPasswordExpire DateTime? @map("reset_password_expire")
+  
+  // Relations
+  products      Product[]
+  wishlist      Wishlist?
+  notifications Notification[]
+  reviews       Review[]
+  
+  @@index([email])
+  @@index([createdAt])
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// ================================
+// PRODUCT MODEL
+// ================================
+model Product {
+  id             String        @id @default(uuid())
+  title          String        @db.VarChar(100)
+  description    String        @db.Text
+  price          Decimal       @db.Decimal(10, 2)
+  originalPrice  Decimal?      @map("original_price") @db.Decimal(10, 2)
+  condition      Condition     @default(USED)
+  category       Category
+  location       String        @db.VarChar(100)
+  
+  // Images (stored as JSONB array)
+  images         Json          // [{public_id: string, url: string}]
+  
+  // Seller
+  sellerId       String        @map("seller_id")
+  seller         User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  // Engagement
+  views          Int           @default(0)
+  likes          Int           @default(0)
+  
+  // Status
+  status         ProductStatus @default(AVAILABLE)
+  isFeatured     Boolean       @default(false) @map("is_featured")
+  
+  // Ratings
+  averageRating  Decimal       @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews   Int           @default(0) @map("total_reviews")
+  
+  // Timestamps
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  wishlistItems  WishlistItem[]
+  reviews        Review[]
+  notifications  Notification[]
+  
+  @@index([category, status])
+  @@index([sellerId, status])
+  @@index([createdAt])
+  @@index([status])
+  // Note: PostgreSQL uses different full-text search (we'll implement this in queries later)
+  @@map("products")
+}
+
+enum Condition {
+  NEW          @map("New")
+  USED         @map("Used")
+  FAIRLY_USED  @map("Fairly Used")
+}
+
+enum Category {
+  ELECTRONICS   @map("electronics")
+  FASHION       @map("fashion")
+  BOOKS         @map("books")
+  FURNITURE     @map("furniture")
+  SPORTS        @map("sports")
+  BEAUTY        @map("beauty")
+  FOOD          @map("food")
+  SERVICES      @map("services")
+  VEHICLES      @map("vehicles")
+  REAL_ESTATE   @map("real-estate")
+  OTHER         @map("other")
+}
+
+enum ProductStatus {
+  DRAFT
+  AVAILABLE
+  SOLD
+  RESERVED
+  DELETED
+}
+
+// ================================
+// REVIEW MODEL
+// ================================
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int      // 1-5
+  comment   String?  @db.VarChar(500)
+  
+  // Relations
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@index([productId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+// ================================
+// WISHLIST MODEL
+// ================================
+model Wishlist {
+  id     String         @id @default(uuid())
+  userId String         @unique @map("user_id")
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  items  WishlistItem[]
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String   @id @default(uuid())
+  
+  wishlistId String   @map("wishlist_id")
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  
+  productId  String   @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  addedAt    DateTime @default(now()) @map("added_at")
+  
+  @@unique([wishlistId, productId])
+  @@index([wishlistId])
+  @@index([productId])
+  @@map("wishlist_items")
+}
+
+// ================================
+// NOTIFICATION MODEL
+// ================================
+model Notification {
+  id        String           @id @default(uuid())
+  
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type      NotificationType
+  title     String           @db.VarChar(100)
+  message   String           @db.VarChar(500)
+  link      String?          @db.VarChar(255)
+  
+  // Related entities
+  relatedProductId String?   @map("related_product_id")
+  relatedProduct   Product?  @relation(fields: [relatedProductId], references: [id], onDelete: SetNull)
+  
+  // Status
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  
+  // Timestamps
+  createdAt DateTime         @default(now()) @map("created_at")
+  
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  PRODUCT_SOLD
+  PRODUCT_REVIEW
+  PRODUCT_LIKE
+  PRICE_DROP
+  NEW_FOLLOWER
+  SYSTEM
+}

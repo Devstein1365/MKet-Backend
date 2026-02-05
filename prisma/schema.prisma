@@ -1,5 +1,24 @@
-// Prisma Schema for MKET Marketplace
-// Database: PostgreSQL
+// ===================================
+// MKET MARKETPLACE DATABASE SCHEMA
+// PostgreSQL + Prisma ORM
+// ===================================
+// This schema defines the complete database structure for the MKET marketplace
+// Built specifically for FUTMINNA student marketplace
+//
+// Key Features:
+// - User authentication with email verification (Nodemailer)
+// - Product listings with AI-generated descriptions (Gemini)
+// - Image moderation & category validation (Cloudinary + Gemini)
+// - Real-time chat system (Socket.io)
+// - Wishlist functionality
+// - Reviews and ratings for sellers
+// - Notifications
+// - Password reset with secure tokens
+// - Draft products saved frontend (localStorage)
+//
+// Product Statuses: DRAFT (unpublished), AVAILABLE (active), SOLD (completed)
+// Locations: MM Castle, Talba Road, School Gate (+ custom text)
+// ===================================
 
 generator client {
   provider = "prisma-client-js"
@@ -10,197 +29,266 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ================================
+// ===================================
 // USER MODEL
-// ================================
+// ===================================
+// Stores all registered users (FUTMINNA students)
+// Each user can be both a buyer and seller
 model User {
   id        String   @id @default(uuid())
-  name      String   @db.VarChar(50)
-  email     String   @unique @db.VarChar(255)
-  password  String   @db.VarChar(255)
-  phone     String?  @db.VarChar(20)
-  location  String?  @db.VarChar(100)
-  bio       String?  @db.VarChar(500)
   
-  // Avatar
-  avatarPublicId String?  @map("avatar_public_id")
-  avatarUrl      String?  @map("avatar_url")
+  // Basic Info (from signup form)
+  fullName  String   @map("full_name") @db.VarChar(100) // 2-3 names required
+  studentId String   @unique @map("student_id") @db.VarChar(50) // e.g., "2022/1/87761ET"
+  email     String   @unique @db.VarChar(255) // FUTMINNA email: lastname.studentId@st.futminna.edu.ng (editable)
+  password  String   @db.VarChar(255) // Hashed with bcrypt (8+ chars, uppercase, lowercase, number, symbol)
+  phone     String   @db.VarChar(11) // Exactly 11 digits (replaced matric number)
   
-  // Status & Verification
-  verified  Boolean  @default(false)
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true) @map("is_active")
+  // Profile Info (editable in profile page)
+  bio       String?  @db.Text // Max 120 words (frontend validation)
+  location  String?  @db.VarChar(100) // Options: "MM Castle", "Talba Road", "School Gate", or custom text
   
-  // Statistics
-  totalListings Int     @default(0) @map("total_listings")
-  totalSold     Int     @default(0) @map("total_sold")
-  rating        Decimal @default(0) @db.Decimal(3, 2)
-  totalReviews  Int     @default(0) @map("total_reviews")
+  // Avatar (user can upload OR default to initials with color)
+  avatarPublicId String?  @map("avatar_public_id") // Cloudinary public_id
+  avatarUrl      String?  @map("avatar_url") // Cloudinary URL
+  avatarColor    String?  @map("avatar_color") @db.VarChar(7) // Random hex color for initials (e.g., "#7E22CE")
   
-  // Timestamps
-  lastLogin DateTime? @map("last_login")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  // Verification Status
+  isVerified       Boolean  @default(false) @map("is_verified") // Email verification status
+  verificationToken String? @unique @map("verification_token") // Token sent to email
+  verificationExpires DateTime? @map("verification_expires") // Token expiry time
   
   // Password Reset
-  resetPasswordToken  String?   @map("reset_password_token")
-  resetPasswordExpire DateTime? @map("reset_password_expire")
+  resetToken        String?   @unique @map("reset_token") // Token for password reset
+  resetTokenExpires DateTime? @map("reset_token_expires") // Reset token expiry
+  
+  // Seller Stats (calculated from products)
+  totalListings Int     @default(0) @map("total_listings")
+  totalSold     Int     @default(0) @map("total_sold")
+  totalViews    Int     @default(0) @map("total_views")
+  averageRating Decimal @default(0) @map("average_rating") @db.Decimal(3, 2) // e.g., 4.75
+  totalReviews  Int     @default(0) @map("total_reviews")
+  
+  // Settings
+  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+  emailNotifications   Boolean @default(true) @map("email_notifications")
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lastLogin DateTime? @map("last_login")
   
   // Relations
-  products      Product[]
-  wishlist      Wishlist?
-  notifications Notification[]
-  reviews       Review[]
+  products          Product[]       // Products user is selling
+  sentMessages      Message[]       @relation("MessageSender")
+  receivedMessages  Message[]       @relation("MessageReceiver")
+  conversations     Conversation[]  @relation("ConversationParticipants")
+  wishlist          WishlistItem[]
+  notifications     Notification[]
+  givenReviews      Review[]        @relation("ReviewGiver") // Reviews user wrote
+  receivedReviews   Review[]        @relation("ReviewReceiver") // Reviews user received as seller
+  reportsMade       Report[]        @relation("ReportReporter")
+  reportsReceived   Report[]        @relation("ReportReported")
   
   @@index([email])
+  @@index([studentId])
   @@index([createdAt])
   @@map("users")
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
-// ================================
+// ===================================
 // PRODUCT MODEL
-// ================================
+// ===================================
+// All items listed for sale by users
 model Product {
-  id             String        @id @default(uuid())
-  title          String        @db.VarChar(100)
-  description    String        @db.Text
-  price          Decimal       @db.Decimal(10, 2)
-  originalPrice  Decimal?      @map("original_price") @db.Decimal(10, 2)
-  condition      Condition     @default(USED)
-  category       Category
-  location       String        @db.VarChar(100)
+  id          String   @id @default(uuid())
   
-  // Images (stored as JSONB array)
-  images         Json          // [{public_id: string, url: string}]
+  // Seller Info
+  sellerId    String   @map("seller_id")
+  seller      User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   
-  // Seller
-  sellerId       String        @map("seller_id")
-  seller         User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  // Product Details (from PostItem form)
+  title       String   @db.VarChar(200)
+  description String   @db.Text
   
-  // Engagement
-  views          Int           @default(0)
-  likes          Int           @default(0)
+  // Images (max 6, stored as JSON array from Cloudinary)
+  // Format: [{ public_id: "...", url: "..." }, ...]
+  // Moderated by Cloudinary AI + Gemini Vision to ensure appropriate content
+  images      Json     @default("[]")
   
-  // Status
-  status         ProductStatus @default(AVAILABLE)
-  isFeatured     Boolean       @default(false) @map("is_featured")
+  // Category & Condition
+  // Category validated by AI image analysis to match product content
+  category    String   @db.VarChar(50) // electronics, fashion, books, furniture, sports, beauty, food, services, vehicles, music, other
+  condition   Condition // NEW, USED, FAIRLY_USED
   
-  // Ratings
-  averageRating  Decimal       @default(0) @map("average_rating") @db.Decimal(3, 2)
-  totalReviews   Int           @default(0) @map("total_reviews")
+  // Pricing (in Naira, stored as integers in kobo for accuracy)
+  price          Int    // Selling price in kobo (divide by 100 for Naira)
+  originalPrice  Int?   @map("original_price") // Original price in kobo (optional)
+  
+  // Location (from frontend dropdown + custom option)
+  location    String   @db.VarChar(100) // "MM Castle", "Talba Road", "School Gate", or custom text
+  
+  // Status (DRAFT saved in frontend localStorage for now)
+  status      ProductStatus @default(AVAILABLE) // Default to AVAILABLE when posted
+  
+  // AI-generated description (requires all fields filled before activation)
+  aiGenerated Boolean  @default(false) @map("ai_generated") // True if Gemini generated description
+  moderationPassed Boolean @default(true) @map("moderation_passed") // Cloudinary + Gemini image check
+  
+  // Engagement Metrics
+  views       Int      @default(0)
+  likes       Int      @default(0)
+  
+  // Ratings (calculated from reviews)
+  averageRating Decimal @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews  Int     @default(0) @map("total_reviews")
   
   // Timestamps
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  soldAt      DateTime? @map("sold_at") // When status changed to SOLD
   
   // Relations
-  wishlistItems  WishlistItem[]
-  reviews        Review[]
-  notifications  Notification[]
+  wishlistedBy  WishlistItem[]
+  reviews       Review[]
+  reports       Report[]
   
-  @@index([category, status])
-  @@index([sellerId, status])
-  @@index([createdAt])
+  @@index([sellerId])
+  @@index([category])
   @@index([status])
-  // Note: PostgreSQL uses different full-text search (we'll implement this in queries later)
+  @@index([createdAt])
+  @@index([category, status])
   @@map("products")
 }
 
+// ===================================
+// ENUMS
+// ===================================
 enum Condition {
   NEW          @map("New")
   USED         @map("Used")
   FAIRLY_USED  @map("Fairly Used")
 }
 
-enum Category {
-  ELECTRONICS   @map("electronics")
-  FASHION       @map("fashion")
-  BOOKS         @map("books")
-  FURNITURE     @map("furniture")
-  SPORTS        @map("sports")
-  BEAUTY        @map("beauty")
-  FOOD          @map("food")
-  SERVICES      @map("services")
-  VEHICLES      @map("vehicles")
-  REAL_ESTATE   @map("real-estate")
-  OTHER         @map("other")
-}
-
 enum ProductStatus {
-  DRAFT
-  AVAILABLE
-  SOLD
-  RESERVED
-  DELETED
+  DRAFT      @map("draft")      // Saved in frontend localStorage (not in DB for now)
+  AVAILABLE  @map("available")  // Active listing (visible to all users)
+  SOLD       @map("sold")       // Completed sale (marked by seller)
 }
 
-// ================================
-// REVIEW MODEL
-// ================================
-model Review {
+// ===================================
+// WISHLIST MODEL
+// ===================================
+// Users can save products they're interested in
+model WishlistItem {
   id        String   @id @default(uuid())
-  rating    Int      // 1-5
-  comment   String?  @db.VarChar(500)
-  
-  // Relations
-  productId String   @map("product_id")
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Timestamps
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   
-  @@index([productId])
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@unique([userId, productId]) // User can only wishlist a product once
   @@index([userId])
-  @@map("reviews")
-}
-
-// ================================
-// WISHLIST MODEL
-// ================================
-model Wishlist {
-  id     String         @id @default(uuid())
-  userId String         @unique @map("user_id")
-  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Relations
-  items  WishlistItem[]
-  
-  // Timestamps
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  
-  @@map("wishlists")
-}
-
-model WishlistItem {
-  id         String   @id @default(uuid())
-  
-  wishlistId String   @map("wishlist_id")
-  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
-  
-  productId  String   @map("product_id")
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  
-  addedAt    DateTime @default(now()) @map("added_at")
-  
-  @@unique([wishlistId, productId])
-  @@index([wishlistId])
-  @@index([productId])
   @@map("wishlist_items")
 }
 
-// ================================
+// ===================================
+// REVIEW MODEL
+// ===================================
+// Buyers can review sellers after transactions
+model Review {
+  id        String   @id @default(uuid())
+  
+  // Reviewer (buyer)
+  reviewerId String  @map("reviewer_id")
+  reviewer   User    @relation("ReviewGiver", fields: [reviewerId], references: [id], onDelete: Cascade)
+  
+  // Seller being reviewed
+  sellerId   String  @map("seller_id")
+  seller     User    @relation("ReviewReceiver", fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  // Product related to this review
+  productId  String  @map("product_id")
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Review content
+  rating     Int     // 1-5 stars
+  comment    String? @db.Text
+  
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  @@unique([reviewerId, productId]) // One review per product per user
+  @@index([sellerId])
+  @@index([productId])
+  @@map("reviews")
+}
+
+// ===================================
+// CHAT/MESSAGING MODELS
+// ===================================
+// Real-time chat system using Socket.io
+
+// Conversation: Container for messages between two users
+model Conversation {
+  id           String   @id @default(uuid())
+  
+  // Participants (2 users)
+  participants User[]   @relation("ConversationParticipants")
+  
+  // Last message info (for inbox preview)
+  lastMessage     String?   @map("last_message") @db.Text
+  lastMessageAt   DateTime? @map("last_message_at")
+  lastMessageBy   String?   @map("last_message_by") // User ID
+  
+  // Timestamps
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  messages     Message[]
+  
+  @@map("conversations")
+}
+
+// Message: Individual chat messages
+model Message {
+  id             String       @id @default(uuid())
+  
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  senderId       String       @map("sender_id")
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  receiverId     String       @map("receiver_id")
+  receiver       User         @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  content        String       @db.Text
+  
+  // Message status
+  isRead         Boolean      @default(false) @map("is_read")
+  readAt         DateTime?    @map("read_at")
+  
+  // Timestamps
+  createdAt      DateTime     @default(now()) @map("created_at")
+  
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// ===================================
 // NOTIFICATION MODEL
-// ================================
+// ===================================
+// System notifications for users
 model Notification {
   id        String           @id @default(uuid())
   
@@ -208,13 +296,12 @@ model Notification {
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   type      NotificationType
-  title     String           @db.VarChar(100)
-  message   String           @db.VarChar(500)
-  link      String?          @db.VarChar(255)
+  title     String           @db.VarChar(200)
+  message   String           @db.Text
   
-  // Related entities
-  relatedProductId String?   @map("related_product_id")
-  relatedProduct   Product?  @relation(fields: [relatedProductId], references: [id], onDelete: SetNull)
+  // Related entities (optional, for linking)
+  relatedId   String?        @map("related_id") // Product ID, User ID, etc.
+  relatedType String?        @map("related_type") // "product", "user", "review", etc.
   
   // Status
   isRead    Boolean          @default(false) @map("is_read")
@@ -223,17 +310,61 @@ model Notification {
   // Timestamps
   createdAt DateTime         @default(now()) @map("created_at")
   
+  @@index([userId])
+  @@index([createdAt])
   @@index([userId, isRead])
-  @@index([userId, createdAt])
   @@map("notifications")
 }
 
 enum NotificationType {
-  NEW_MESSAGE
-  PRODUCT_SOLD
-  PRODUCT_REVIEW
-  PRODUCT_LIKE
-  PRICE_DROP
-  NEW_FOLLOWER
-  SYSTEM
+  NEW_MESSAGE      @map("new_message")      // Someone sent you a message
+  PRODUCT_SOLD     @map("product_sold")     // Your product was marked as sold
+  PRODUCT_LIKED    @map("product_liked")    // Someone liked your product
+  NEW_REVIEW       @map("new_review")       // You received a review
+  PRICE_DROP       @map("price_drop")       // Wishlisted product price dropped
+  VERIFICATION     @map("verification")     // Email verification status
+  SYSTEM           @map("system")           // System announcements
+}
+
+// ===================================
+// REPORT MODEL
+// ===================================
+// Users can report products or other users
+model Report {
+  id          String       @id @default(uuid())
+  
+  reporterId  String       @map("reporter_id")
+  reporter    User         @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  
+  // What is being reported
+  reportedUserId  String?   @map("reported_user_id")
+  reportedUser    User?     @relation("ReportReported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  
+  reportedProductId String? @map("reported_product_id")
+  reportedProduct   Product? @relation(fields: [reportedProductId], references: [id], onDelete: Cascade)
+  
+  // Report details
+  reason      String       @db.VarChar(100) // "Inappropriate content", "Scam", etc.
+  description String?      @db.Text
+  status      ReportStatus @default(PENDING)
+  
+  // Admin response
+  adminNotes  String?      @db.Text @map("admin_notes")
+  resolvedAt  DateTime?    @map("resolved_at")
+  
+  // Timestamps
+  createdAt   DateTime     @default(now()) @map("created_at")
+  
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@index([reportedProductId])
+  @@index([status])
+  @@map("reports")
+}
+
+enum ReportStatus {
+  PENDING   @map("pending")
+  REVIEWED  @map("reviewed")
+  RESOLVED  @map("resolved")
+  DISMISSED @map("dismissed")
 }

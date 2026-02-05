@@ -19,7 +19,21 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import { createServer } from "http";
+import { Server } from "socket.io";
 import { connectDatabase } from "./config/prisma.js";
+
+// Import Routes
+import indexRoutes from "./routes/index.js";
+import authRoutes from "./routes/authRoutes.js";
+import productRoutes from "./routes/productRoutes.js";
+import wishlistRoutes from "./routes/wishlistRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
+
+// Import Socket.io setup
+import { setupSocket } from "./socket/chatSocket.js";
 
 // ===================================
 // STEP 1: LOAD ENVIRONMENT VARIABLES
@@ -35,6 +49,16 @@ dotenv.config();
 // Think of it as the foundation that processes API calls from your frontend
 const app = express();
 
+// Create HTTP server and Socket.io instance
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+
 // ===================================
 // STEP 3: CONFIGURE MIDDLEWARE
 // ===================================
@@ -49,6 +73,7 @@ const app = express();
 // Your frontend runs on: http://localhost:5173 (Vite default)
 // Your backend runs on:  http://localhost:3000
 // Without CORS, the browser would block all API calls!
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173", // Allow your React app
@@ -72,46 +97,26 @@ app.use(express.urlencoded({ extended: true }));
 // MIDDLEWARE 4: REQUEST LOGGER (Simple)
 // ------------------------------------------------------
 // Logs every request to the console (helpful for debugging)
-// Example output: "GET /api/products" or "POST /api/auth/login"
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
-  next(); // Pass control to the next middleware/route
-});
 
-// ===================================
-// STEP 4: API ROUTES (Coming Soon!)
-// ===================================
-// This is where we'll connect our routes:
-// - Authentication routes: /api/auth/login, /api/auth/register
-// - Product routes: /api/products, /api/products/:id
-// - Wishlist routes: /api/wishlist
-// - Notification routes: /api/notifications
-//
-// For now, we just have test routes to verify the server works:
+// General routes (health check, API info, etc.)
+app.use("/", indexRoutes);
 
-// Root endpoint - Shows API info
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "🎯 MKET Marketplace API",
-    version: "2.0.0",
-    docs: "/api/docs", // Future: API documentation endpoint
-  });
-});
+// Authentication routes (signup, login, verify, reset password, etc.)
+app.use("/api/auth", authRoutes);
 
-// Health check - Useful for monitoring if server is alive
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Server is running smoothly! 🚀",
-    database: "PostgreSQL",
-    orm: "Prisma",
-    timestamp: new Date().toISOString(),
-  });
-});
+// Product routes (create, get, update, delete products)
+app.use("/api/products", productRoutes);
 
-// ===================================
-// STEP 5: START THE SERVER
+// Wishlist routes (add/remove/get wishlist items)
+app.use("/api/wishlist", wishlistRoutes);
+
+// Notification routes (get/mark read/delete notifications)
+app.use("/api/notifications", notificationRoutes);
+
+// Report routes (create/get reports)
+app.use("/api/reports", reportRoutes);
+
+// Chat 6: START THE SERVER
 // ===================================
 // This is an async function so we can wait for database connection
 const startServer = async () => {
@@ -120,22 +125,33 @@ const startServer = async () => {
     console.log("🔄 Connecting to PostgreSQL database...");
     await connectDatabase();
 
-    // Then start the Express server
+    // Then start the HTTP server (with Socket.io)
     const PORT = process.env.PORT || 3000;
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log("");
       console.log("========================================");
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📍 URL: http://localhost:${PORT}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`💾 Database: PostgreSQL + Prisma`);
+      console.log(`🔌 Socket.io: Enabled (Real-time Chat)`);
       console.log("========================================");
       console.log("");
       console.log("✨ Ready to accept requests!");
-      console.log("   - Test in browser: http://localhost:3000");
-      console.log("   - API docs: Coming soon!");
+      console.log("   - REST API: http://localhost:3000/api");
+      console.log("   - Socket.io: ws://localhost:3000");
+      console.log("   - Health Check: http://localhost:3000/api/health");
       console.log("");
+      console.log("📋 Available Routes:");
+      console.log("   ✅ /api/auth - Authentication");
+      console.log("   ✅ /api/products - Products");
+      console.log("   ✅ /api/wishlist - Wishlist");
+      console.log("   ✅ /api/notifications - Notifications");
+      console.log("   ✅ /api/reports - Reports");
+      console.log("   ✅ /api/conversations - Chat (REST)");
+      console.log("   ✅ Socket.io - Chat (Real-time)");
+      console.log("========================================");
     });
   } catch (error) {
     console.error("❌ Failed to start server:");
