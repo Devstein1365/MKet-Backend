@@ -31,6 +31,7 @@ import wishlistRoutes from "./routes/wishlistRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
 
 // Import Socket.io setup
 import { setupSocket } from "./socket/chatSocket.js";
@@ -116,6 +117,9 @@ app.use("/api/notifications", notificationRoutes);
 // Report routes (create/get reports)
 app.use("/api/reports", reportRoutes);
 
+// AI routes (generate descriptions, AI features)
+app.use("/api/ai", aiRoutes);
+
 // Chat 6: START THE SERVER
 // ===================================
 // This is an async function so we can wait for database connection
@@ -149,6 +153,7 @@ const startServer = async () => {
       console.log("   ✅ /api/wishlist - Wishlist");
       console.log("   ✅ /api/notifications - Notifications");
       console.log("   ✅ /api/reports - Reports");
+      console.log("   ✅ /api/ai - AI Features (Gemini)");
       console.log("   ✅ /api/conversations - Chat (REST)");
       console.log("   ✅ Socket.io - Chat (Real-time)");
       console.log("========================================");
