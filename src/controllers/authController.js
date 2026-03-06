@@ -66,9 +66,10 @@ const formatUserResponse = (user) => {
 export const signup = async (req, res) => {
   try {
     const { name, email, password, phone, studentId } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
 
     // Validation
-    if (!name || !email || !password || !phone || !studentId) {
+    if (!name || !normalizedEmail || !password || !phone || !studentId) {
       return res.status(400).json({
         success: false,
         message:
@@ -90,7 +91,7 @@ export const signup = async (req, res) => {
     }
 
     // Validate FUTMINNA email
-    if (!email.endsWith("@st.futminna.edu.ng")) {
+    if (!normalizedEmail.endsWith("@st.futminna.edu.ng")) {
       return res.status(400).json({
         success: false,
         message:
@@ -144,7 +145,7 @@ export const signup = async (req, res) => {
 
     // Check if email already exists
     const existingUserByEmail = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (existingUserByEmail) {
@@ -180,7 +181,7 @@ export const signup = async (req, res) => {
     const user = await prisma.user.create({
       data: {
         fullName: name,
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         phone,
         studentId,
@@ -229,9 +230,10 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
 
     // Validation
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({
         success: false,
         message: "Please provide email and password",
@@ -240,25 +242,57 @@ export const login = async (req, res) => {
 
     // Find user by email
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
+    console.log("🔍 Login attempt for:", normalizedEmail);
+    console.log("👤 User found:", !!user);
+
     if (!user) {
+      console.log("❌ User not found in database");
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
       });
     }
+
+    console.log("🔐 Comparing passwords...");
+    console.log(
+      "Password provided:",
+      password ? `${password.length} chars` : "empty",
+    );
+    console.log("Password hash in DB:", user.password ? "exists" : "missing");
 
     // Check password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isBcryptHash = /^\$2[aby]\$\d{2}\$/.test(user.password || "");
+    let isPasswordValid = false;
+
+    if (isBcryptHash) {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    } else {
+      isPasswordValid = password === user.password;
+
+      // Auto-migrate legacy plain-text password to bcrypt hash
+      if (isPasswordValid) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { password: hashedPassword },
+        });
+      }
+    }
+
+    console.log("✅ Password valid:", isPasswordValid);
 
     if (!isPasswordValid) {
+      console.log("❌ Password comparison failed");
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
       });
     }
+
+    console.log("✅ Login successful for:", normalizedEmail);
 
     // Update last login
     await prisma.user.update({
