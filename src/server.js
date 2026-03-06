@@ -43,6 +43,23 @@ import { setupSocket } from "./socket/chatSocket.js";
 // Example: process.env.PORT, process.env.DATABASE_URL, etc.
 dotenv.config();
 
+const allowedOrigins = (
+  process.env.FRONTEND_URLS ||
+  process.env.FRONTEND_URL ||
+  "http://localhost:1365,http://localhost:5173,http://localhost:5174,https://mket13.vercel.app"
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOriginValidator = (origin, callback) => {
+  if (!origin || allowedOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+
+  return callback(new Error(`CORS blocked for origin: ${origin}`));
+};
+
 // ===================================
 // STEP 2: CREATE EXPRESS APPLICATION
 // ===================================
@@ -54,7 +71,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST"],
   },
@@ -77,7 +94,7 @@ const io = new Server(httpServer, {
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173", // Allow your React app
+    origin: corsOriginValidator,
     credentials: true, // Allow cookies/auth headers to be sent
   }),
 );
