@@ -69,8 +69,16 @@ export const setupSocket = (io) => {
     // ===================================
     // JOIN CONVERSATION ROOM
     // ===================================
-    socket.on("join_conversation", async (conversationId) => {
+    socket.on("join_conversation", async (payload) => {
       try {
+        const conversationId =
+          typeof payload === "string" ? payload : payload?.conversationId;
+
+        if (!conversationId) {
+          socket.emit("error", { message: "conversationId is required" });
+          return;
+        }
+
         // Verify user is participant
         const conversation = await prisma.conversation.findUnique({
           where: { id: conversationId },
@@ -101,7 +109,14 @@ export const setupSocket = (io) => {
     // ===================================
     // LEAVE CONVERSATION ROOM
     // ===================================
-    socket.on("leave_conversation", (conversationId) => {
+    socket.on("leave_conversation", (payload) => {
+      const conversationId =
+        typeof payload === "string" ? payload : payload?.conversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
       socket.leave(conversationId);
       console.log(`User ${socket.userId} left conversation ${conversationId}`);
     });
@@ -109,11 +124,16 @@ export const setupSocket = (io) => {
     // ===================================
     // SEND MESSAGE (REAL-TIME)
     // ===================================
-    socket.on("send_message", async (data) => {
+    socket.on("send_message", async (data, callback) => {
       try {
         const { conversationId, text } = data;
 
         if (!text || text.trim() === "") {
+          if (typeof callback === "function") {
+            callback({ success: false, message: "Message cannot be empty" });
+            return;
+          }
+
           socket.emit("error", { message: "Message cannot be empty" });
           return;
         }
@@ -129,6 +149,14 @@ export const setupSocket = (io) => {
           (conversation.user1Id !== socket.userId &&
             conversation.user2Id !== socket.userId)
         ) {
+          if (typeof callback === "function") {
+            callback({
+              success: false,
+              message: "Access denied to this conversation",
+            });
+            return;
+          }
+
           socket.emit("error", {
             message: "Access denied to this conversation",
           });
@@ -151,7 +179,7 @@ export const setupSocket = (io) => {
         });
 
         // Emit message to conversation room
-        io.to(conversationId).emit("message_received", {
+        const realtimeMessage = {
           id: message.id,
           conversationId: message.conversationId,
           senderId: message.senderId,
@@ -159,11 +187,23 @@ export const setupSocket = (io) => {
           isRead: message.isRead,
           createdAt: message.createdAt,
           sender: socket.user,
-        });
+        };
+
+        io.to(conversationId).emit("message_received", realtimeMessage);
+
+        if (typeof callback === "function") {
+          callback({ success: true, data: realtimeMessage });
+        }
 
         console.log(`Message sent in conversation ${conversationId}`);
       } catch (error) {
         console.error("Send message error:", error);
+
+        if (typeof callback === "function") {
+          callback({ success: false, message: "Failed to send message" });
+          return;
+        }
+
         socket.emit("error", { message: "Failed to send message" });
       }
     });
@@ -173,7 +213,41 @@ export const setupSocket = (io) => {
     // ===================================
     socket.on("mark_read", async (data) => {
       try {
-        const { messageId, conversationId } = data;
+        const { messageId, conversationId: payloadConversationId } = data;
+
+        if (!messageId) {
+          socket.emit("error", { message: "messageId is required" });
+          return;
+        }
+
+        const existingMessage = await prisma.message.findUnique({
+          where: { id: messageId },
+          include: {
+            conversation: {
+              select: {
+                id: true,
+                user1Id: true,
+                user2Id: true,
+              },
+            },
+          },
+        });
+
+        if (!existingMessage) {
+          socket.emit("error", { message: "Message not found" });
+          return;
+        }
+
+        const conversationId =
+          payloadConversationId || existingMessage.conversationId;
+
+        if (
+          existingMessage.conversation.user1Id !== socket.userId &&
+          existingMessage.conversation.user2Id !== socket.userId
+        ) {
+          socket.emit("error", { message: "Access denied" });
+          return;
+        }
 
         // Update message
         await prisma.message.update({

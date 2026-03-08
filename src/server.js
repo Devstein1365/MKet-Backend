@@ -137,6 +137,12 @@ app.use("/api/reports", reportRoutes);
 // AI routes (generate descriptions, AI features)
 app.use("/api/ai", aiRoutes);
 
+// Chat routes (conversations and messages)
+app.use("/api", chatRoutes);
+
+// Initialize Socket.io chat handlers
+setupSocket(io);
+
 // Chat 6: START THE SERVER
 // ===================================
 // This is an async function so we can wait for database connection

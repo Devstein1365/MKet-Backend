@@ -7,6 +7,25 @@
 
 import prisma from "../config/prisma.js";
 
+const safeParseImages = (images) => {
+  if (!images) return [];
+
+  if (Array.isArray(images)) {
+    return images;
+  }
+
+  if (typeof images === "string") {
+    try {
+      const parsed = JSON.parse(images);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+};
+
 // ===================================
 // CREATE OR GET CONVERSATION
 // ===================================
@@ -15,9 +34,10 @@ import prisma from "../config/prisma.js";
 // Requires: Authentication
 export const createOrGetConversation = async (req, res) => {
   try {
-    const { participantId, productId } = req.body;
+    const { participantId, user2Id, productId } = req.body;
+    const targetParticipantId = participantId || user2Id;
 
-    if (!participantId) {
+    if (!targetParticipantId) {
       return res.status(400).json({
         success: false,
         message: "Please provide participantId",
@@ -25,7 +45,7 @@ export const createOrGetConversation = async (req, res) => {
     }
 
     // Don't allow users to message themselves
-    if (participantId === req.userId) {
+    if (targetParticipantId === req.userId) {
       return res.status(400).json({
         success: false,
         message: "You cannot message yourself",
@@ -34,7 +54,7 @@ export const createOrGetConversation = async (req, res) => {
 
     // Check if participant exists
     const participant = await prisma.user.findUnique({
-      where: { id: participantId },
+      where: { id: targetParticipantId },
     });
 
     if (!participant) {
@@ -63,10 +83,10 @@ export const createOrGetConversation = async (req, res) => {
       where: {
         OR: [
           {
-            AND: [{ user1Id: req.userId }, { user2Id: participantId }],
+            AND: [{ user1Id: req.userId }, { user2Id: targetParticipantId }],
           },
           {
-            AND: [{ user1Id: participantId }, { user2Id: req.userId }],
+            AND: [{ user1Id: targetParticipantId }, { user2Id: req.userId }],
           },
         ],
       },
@@ -109,7 +129,7 @@ export const createOrGetConversation = async (req, res) => {
       conversation = await prisma.conversation.create({
         data: {
           user1Id: req.userId,
-          user2Id: participantId,
+          user2Id: targetParticipantId,
           productId: productId || null,
         },
         include: {
@@ -148,7 +168,7 @@ export const createOrGetConversation = async (req, res) => {
     if (conversation.product) {
       conversation.product = {
         ...conversation.product,
-        images: JSON.parse(conversation.product.images),
+        images: safeParseImages(conversation.product.images),
         price: conversation.product.price / 100,
       };
     }
@@ -234,7 +254,7 @@ export const getConversations = async (req, res) => {
         if (conv.product) {
           product = {
             ...conv.product,
-            images: JSON.parse(conv.product.images),
+            images: safeParseImages(conv.product.images),
             price: conv.product.price / 100,
           };
         }
@@ -327,7 +347,7 @@ export const getConversationById = async (req, res) => {
     if (conversation.product) {
       conversation.product = {
         ...conversation.product,
-        images: JSON.parse(conversation.product.images),
+        images: safeParseImages(conversation.product.images),
         price: conversation.product.price / 100,
       };
     }
