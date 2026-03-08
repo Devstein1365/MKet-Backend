@@ -81,8 +81,8 @@ model User {
   // Relations
   products          Product[]       // Products user is selling
   sentMessages      Message[]       @relation("MessageSender")
-  receivedMessages  Message[]       @relation("MessageReceiver")
-  conversations     Conversation[]  @relation("ConversationParticipants")
+  conversationsAsUser1 Conversation[] @relation("ConversationUser1")
+  conversationsAsUser2 Conversation[] @relation("ConversationUser2")
   wishlist          WishlistItem[]
   notifications     Notification[]
   givenReviews      Review[]        @relation("ReviewGiver") // Reviews user wrote
@@ -152,6 +152,7 @@ model Product {
   wishlistedBy  WishlistItem[]
   reviews       Review[]
   reports       Report[]
+  conversations Conversation[]
   
   @@index([sellerId])
   @@index([category])
@@ -237,10 +238,18 @@ model Review {
 // Conversation: Container for messages between two users
 model Conversation {
   id           String   @id @default(uuid())
+
+  // Participants
+  user1Id      String   @map("user1_id")
+  user1        User     @relation("ConversationUser1", fields: [user1Id], references: [id])
   
-  // Participants (2 users)
-  participants User[]   @relation("ConversationParticipants")
-  
+  user2Id      String   @map("user2_id")
+  user2        User     @relation("ConversationUser2", fields: [user2Id], references: [id])
+
+  // Product context (optional - if chat is about a specific product)
+  productId    String?  @map("product_id")
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
   // Last message info (for inbox preview)
   lastMessage     String?   @map("last_message") @db.Text
   lastMessageAt   DateTime? @map("last_message_at")
@@ -254,44 +263,37 @@ model Conversation {
   messages     Message[]
   
   @@map("conversations")
+  @@unique([user1Id, user2Id, productId])
 }
 
-// Message: Individual chat messages
+// MESSAGE MODEL
 model Message {
   id             String       @id @default(uuid())
-  
+
   conversationId String       @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  
+
   senderId       String       @map("sender_id")
   sender         User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   
-  receiverId     String       @map("receiver_id")
-  receiver       User         @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  
-  content        String       @db.Text
-  
+  text           String       @db.Text
+
   // Message status
   isRead         Boolean      @default(false) @map("is_read")
   readAt         DateTime?    @map("read_at")
-  
+
   // Timestamps
   createdAt      DateTime     @default(now()) @map("created_at")
-  
+
   @@index([conversationId])
   @@index([senderId])
-  @@index([receiverId])
   @@index([createdAt])
   @@map("messages")
 }
 
-// ===================================
 // NOTIFICATION MODEL
-// ===================================
-// System notifications for users
 model Notification {
   id        String           @id @default(uuid())
-  
   userId    String           @map("user_id")
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   
