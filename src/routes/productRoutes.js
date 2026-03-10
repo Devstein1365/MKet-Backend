@@ -38,10 +38,6 @@ router.get("/", getAllProducts);
 // GET /api/products/user/:userId?status=available
 router.get("/user/:userId", getUserProducts);
 
-// Get product by ID (must be after /user/:userId to avoid conflict)
-// GET /api/products/:id
-router.get("/:id", getProductById);
-
 // Increment product views
 // POST /api/products/:id/increment-views
 router.post("/:id/increment-views", incrementViews);
@@ -54,10 +50,14 @@ router.get("/:id/reviews", getProductReviews);
 // PROTECTED ROUTES (Authentication required)
 // ===================================
 
-// Get my products (before POST / to avoid conflict)
+// Get my products (MUST BE BEFORE /:id route to avoid conflict)
 // GET /api/products/my-products?status=available
 // Headers: Authorization: Bearer <token>
 router.get("/my-products", auth, getMyProducts);
+
+// Get product by ID (must be after specific routes to avoid conflicts)
+// GET /api/products/:id
+router.get("/:id", getProductById);
 
 // Create new product
 // POST /api/products
