@@ -105,13 +105,13 @@ app.use(
 // Example: When frontend sends { "email": "user@example.com", "password": "123" }
 // This middleware parses it so you can access it via req.body.email
 // Increase limit to 10mb to handle larger payloads (like base64 images if needed)
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
 
 // MIDDLEWARE 3: URL-ENCODED BODY PARSER
 // ------------------------------------------------------
 // Handles form data (like when submitting HTML forms)
 // Extended: true allows nested objects in the data
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // MIDDLEWARE 4: REQUEST LOGGER (Simple)
 // ------------------------------------------------------
