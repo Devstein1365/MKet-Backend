@@ -14,6 +14,7 @@ import {
   sendMessage,
   markMessageAsRead,
   markAllMessagesAsRead,
+  deleteConversation,
 } from "../controllers/chatController.js";
 import { auth } from "../middleware/auth.js";
 
@@ -50,5 +51,9 @@ router.post("/messages", auth, sendMessage);
 // Mark message as read
 // PUT /api/messages/:id/read
 router.put("/messages/:id/read", auth, markMessageAsRead);
+
+// Delete conversation
+// DELETE /api/conversations/:id
+router.delete("/conversations/:id", auth, deleteConversation);
 
 export default router;

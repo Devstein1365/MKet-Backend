@@ -206,3 +206,45 @@ export const clearAllNotifications = async (req, res) => {
     });
   }
 };
+
+// ===================================
+// HELPER FUNCTION: CREATE NOTIFICATION
+// ===================================
+// Used by other controllers and socket handlers
+// to create notifications
+export const createNotification = async ({
+  userId,
+  type,
+  title,
+  message,
+  relatedId = null,
+  relatedType = null,
+}) => {
+  try {
+    // Check if user has notifications enabled
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationsEnabled: true },
+    });
+
+    if (!user || !user.notificationsEnabled) {
+      return null; // User has disabled notifications
+    }
+
+    const notification = await prisma.notification.create({
+      data: {
+        userId,
+        type,
+        title,
+        message,
+        relatedId,
+        relatedType,
+      },
+    });
+
+    return notification;
+  } catch (error) {
+    console.error("Create notification error:", error);
+    return null;
+  }
+};

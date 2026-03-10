@@ -6,6 +6,7 @@
 
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
+import { createNotification } from "../controllers/notificationController.js";
 
 // Store online users {userId: socketId}
 const onlineUsers = new Map();
@@ -178,6 +179,24 @@ export const setupSocket = (io) => {
           data: { updatedAt: new Date() },
         });
 
+        // Get recipient ID (the other user in the conversation)
+        const recipientId =
+          conversation.user1Id === socket.userId
+            ? conversation.user2Id
+            : conversation.user1Id;
+
+        // Create notification for recipient if they're not currently online
+        if (!onlineUsers.has(recipientId)) {
+          await createNotification({
+            userId: recipientId,
+            type: "NEW_MESSAGE",
+            title: "New message",
+            message: `${socket.user.fullName} sent you a message: "${text.trim().substring(0, 50)}${text.trim().length > 50 ? "..." : ""}"`,
+            relatedId: conversationId,
+            relatedType: "conversation",
+          });
+        }
+
         // Emit message to conversation room
         const realtimeMessage = {
           id: message.id,
@@ -291,10 +310,20 @@ export const setupSocket = (io) => {
     // ===================================
     // DISCONNECT
     // ===================================
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       console.log(
         `❌ User disconnected: ${socket.user.fullName} (${socket.userId})`,
       );
+
+      // Update lastLogin timestamp
+      try {
+        await prisma.user.update({
+          where: { id: socket.userId },
+          data: { lastLogin: new Date() },
+        });
+      } catch (error) {
+        console.error("Failed to update lastLogin:", error);
+      }
 
       // Remove from online users
       onlineUsers.delete(socket.userId);

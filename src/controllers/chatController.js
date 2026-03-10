@@ -651,3 +651,59 @@ export const markAllMessagesAsRead = async (req, res) => {
     });
   }
 };
+
+// ===================================
+// DELETE CONVERSATION
+// ===================================
+// DELETE /api/conversations/:id
+// Requires: Authentication
+export const deleteConversation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if user is participant
+    const conversation = await prisma.conversation.findUnique({
+      where: { id },
+      select: { user1Id: true, user2Id: true },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: "Conversation not found",
+      });
+    }
+
+    if (
+      conversation.user1Id !== req.userId &&
+      conversation.user2Id !== req.userId
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have access to this conversation",
+      });
+    }
+
+    // Delete all messages in the conversation first
+    await prisma.message.deleteMany({
+      where: { conversationId: id },
+    });
+
+    // Delete the conversation
+    await prisma.conversation.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: "Conversation deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete conversation error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete conversation",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
