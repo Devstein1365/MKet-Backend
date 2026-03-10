@@ -208,6 +208,7 @@ export const getConversations = async (req, res) => {
             avatarUrl: true,
             avatarColor: true,
             isVerified: true,
+            lastLogin: true,
           },
         },
         user2: {
@@ -217,6 +218,7 @@ export const getConversations = async (req, res) => {
             avatarUrl: true,
             avatarColor: true,
             isVerified: true,
+            lastLogin: true,
           },
         },
         product: {
@@ -242,6 +244,11 @@ export const getConversations = async (req, res) => {
           // Get the other participant
           const participant =
             conv.user1Id === req.userId ? conv.user2 : conv.user1;
+
+          // Add lastSeen from lastLogin field
+          if (participant) {
+            participant.lastSeen = participant.lastLogin || null;
+          }
 
           // Count unread messages
           const unreadCount = await prisma.message.count({
