@@ -17,11 +17,14 @@ import nodemailer from "nodemailer";
 // Gmail SMTP configuration
 // For production, use a dedicated email service like SendGrid, Mailgun, or AWS SES
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  const emailUser = process.env.EMAIL_USER;
+  const emailPassword = (process.env.EMAIL_PASSWORD || "").replace(/\s+/g, "");
+
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: process.env.EMAIL_USER, // Your Gmail address
-      pass: process.env.EMAIL_PASSWORD, // Your Gmail App Password (not regular password!)
+      user: emailUser, // Your Gmail address
+      pass: emailPassword, // Gmail App Password (whitespace removed automatically)
     },
   });
 };
@@ -38,8 +41,11 @@ export const sendVerificationEmail = async (
   try {
     const transporter = createTransporter();
 
+    await transporter.verify();
+
     // Frontend verification URL
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
 
     const mailOptions = {
       from: {
@@ -133,8 +139,11 @@ export const sendVerificationEmail = async (
     console.log(`✅ Verification email sent to ${email}`);
     return true;
   } catch (error) {
-    console.error("❌ Error sending verification email:", error);
-    throw new Error("Failed to send verification email");
+    console.error(
+      "❌ Error sending verification email:",
+      error?.response || error?.message || error,
+    );
+    throw error;
   }
 };
 
@@ -146,8 +155,11 @@ export const sendPasswordResetEmail = async (email, userName, resetToken) => {
   try {
     const transporter = createTransporter();
 
+    await transporter.verify();
+
     // Frontend reset password URL
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
     const mailOptions = {
       from: {
@@ -254,8 +266,11 @@ export const sendPasswordResetEmail = async (email, userName, resetToken) => {
     console.log(`✅ Password reset email sent to ${email}`);
     return true;
   } catch (error) {
-    console.error("❌ Error sending password reset email:", error);
-    throw new Error("Failed to send password reset email");
+    console.error(
+      "❌ Error sending password reset email:",
+      error?.response || error?.message || error,
+    );
+    throw error;
   }
 };
 
