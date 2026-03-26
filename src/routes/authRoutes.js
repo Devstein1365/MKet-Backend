@@ -15,6 +15,7 @@ import {
   getUserById,
   verifyEmail,
   resendVerification,
+  resendVerificationByEmail,
   forgotPassword,
   resetPassword,
   updateSettings,
@@ -40,6 +41,11 @@ router.post("/login", login);
 // Verify email with token
 // GET /api/auth/verify-email/:token
 router.get("/verify-email/:token", verifyEmail);
+
+// Resend verification email by email address (public)
+// POST /api/auth/resend-verification-email
+// Body: { email }
+router.post("/resend-verification-email", resendVerificationByEmail);
 
 // Request password reset
 // POST /api/auth/forgot-password

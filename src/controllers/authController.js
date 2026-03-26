@@ -629,15 +629,76 @@ export const resendVerification = async (req, res) => {
 };
 
 // ===================================
+// RESEND VERIFICATION EMAIL (PUBLIC)
+// ===================================
+// POST /api/auth/resend-verification-email
+// Body: { email }
+export const resendVerificationByEmail = async (req, res) => {
+  try {
+    const normalizedEmail = req.body?.email?.trim()?.toLowerCase();
+
+    if (!normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide your email address",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        message: "If that email exists, a verification link has been sent.",
+      });
+    }
+
+    if (user.isVerified) {
+      return res.json({
+        success: true,
+        message: "Email is already verified. Please login.",
+      });
+    }
+
+    const verificationToken = generateVerificationToken();
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verificationToken,
+        verificationExpires,
+      },
+    });
+
+    await sendVerificationEmail(user.email, user.fullName, verificationToken);
+
+    res.json({
+      success: true,
+      message: "If that email exists, a verification link has been sent.",
+    });
+  } catch (error) {
+    console.error("Public resend verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send verification email",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+// ===================================
 // REQUEST PASSWORD RESET
 // ===================================
 // POST /api/auth/forgot-password
 // Body: { email }
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const normalizedEmail = req.body?.email?.trim()?.toLowerCase();
 
-    if (!email) {
+    if (!normalizedEmail) {
       return res.status(400).json({
         success: false,
         message: "Please provide your email address",
@@ -646,11 +707,19 @@ export const forgotPassword = async (req, res) => {
 
     // Find user
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     // Don't reveal if email exists or not (security)
     if (!user) {
+      return res.json({
+        success: true,
+        message: "If that email exists, a password reset link has been sent.",
+      });
+    }
+
+    // Allow password reset requests only for accounts that have logged in before
+    if (!user.lastLogin) {
       return res.json({
         success: true,
         message: "If that email exists, a password reset link has been sent.",
