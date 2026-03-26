@@ -90,12 +90,12 @@ export const signup = async (req, res) => {
       });
     }
 
-    // Validate FUTMINNA email
-    if (!normalizedEmail.endsWith("@st.futminna.edu.ng")) {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please use a valid FUTMINNA student email (@st.futminna.edu.ng)",
+        message: "Please provide a valid email address",
       });
     }
 
@@ -293,6 +293,15 @@ export const login = async (req, res) => {
     }
 
     console.log("✅ Login successful for:", normalizedEmail);
+
+    // Check if email is verified
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Please verify your email before logging in. Check your inbox for the verification link.",
+      });
+    }
 
     // Update last login
     await prisma.user.update({
