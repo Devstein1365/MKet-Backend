@@ -50,8 +50,11 @@ export const sendVerificationEmail = async (
       await transporter.verify();
     }
 
-    // Use FRONTEND_URL from env or fallback
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    // Use the first URL from FRONTEND_URL for the link
+    const origins = (process.env.FRONTEND_URL || "http://localhost:1365").split(
+      ",",
+    );
+    const frontendUrl = origins[0];
     const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
 
     const mailOptions = {
@@ -167,8 +170,11 @@ export const sendPasswordResetEmail = async (email, userName, resetToken) => {
       await transporter.verify();
     }
 
-    // Frontend reset password URL
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    // Frontend reset password URL (use the first URL from FRONTEND_URL for the link)
+    const origins = (process.env.FRONTEND_URL || "http://localhost:1365").split(
+      ",",
+    );
+    const frontendUrl = origins[0];
     const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
     const mailOptions = {

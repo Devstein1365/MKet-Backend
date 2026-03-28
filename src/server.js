@@ -43,11 +43,8 @@ import { setupSocket } from "./socket/chatSocket.js";
 // Example: process.env.PORT, process.env.DATABASE_URL, etc.
 dotenv.config();
 
-const allowedOrigins = (
-  process.env.FRONTEND_URLS ||
-  process.env.FRONTEND_URL ||
-  "http://localhost:1365,http://localhost:5173,http://localhost:5174,https://mket13.vercel.app"
-)
+// Use a comma-separated list in FRONTEND_URL for multiple origins (e.g., "http://localhost:5173,https://mket.vercel.app")
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:1365")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
