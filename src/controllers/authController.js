@@ -191,20 +191,14 @@ export const signup = async (req, res) => {
       },
     });
 
-    // Send verification email
-    try {
-      await sendVerificationEmail(user.email, user.fullName, verificationToken);
-    } catch (emailError) {
-      console.error("Error sending verification email:", emailError);
-      // Continue even if email fails (user can resend later)
-    }
-
     // Generate JWT token
     const token = generateToken(user.id);
 
     // Return user data (without sensitive fields)
     const userResponse = formatUserResponse(user);
 
+    // Send response response IMMEDIATELY to frontend
+    // Email will be sent in the background to avoid holding the request for 10-30s
     res.status(201).json({
       success: true,
       message:
@@ -212,6 +206,16 @@ export const signup = async (req, res) => {
       token,
       user: userResponse,
     });
+
+    // Send verification email (BACKGROUND PROCESS)
+    sendVerificationEmail(user.email, user.fullName, verificationToken).catch(
+      (emailError) => {
+        console.error(
+          "Background error sending verification email:",
+          emailError,
+        );
+      },
+    );
   } catch (error) {
     console.error("Signup error:", error);
     res.status(500).json({
@@ -620,13 +624,21 @@ export const resendVerification = async (req, res) => {
       },
     });
 
-    // Send verification email
-    await sendVerificationEmail(user.email, user.fullName, verificationToken);
-
+    // Send response response IMMEDIATELY
     res.json({
       success: true,
       message: "Verification email sent! Please check your inbox.",
     });
+
+    // Send verification email (BACKGROUND PROCESS)
+    sendVerificationEmail(user.email, user.fullName, verificationToken).catch(
+      (emailError) => {
+        console.error(
+          "Background error sending protected verification email:",
+          emailError,
+        );
+      },
+    );
   } catch (error) {
     console.error("Resend verification error:", error);
     res.status(500).json({
@@ -682,12 +694,21 @@ export const resendVerificationByEmail = async (req, res) => {
       },
     });
 
-    await sendVerificationEmail(user.email, user.fullName, verificationToken);
-
+    // Send response response IMMEDIATELY
     res.json({
       success: true,
       message: "If that email exists, a verification link has been sent.",
     });
+
+    // Send verification email (BACKGROUND PROCESS)
+    sendVerificationEmail(user.email, user.fullName, verificationToken).catch(
+      (emailError) => {
+        console.error(
+          "Background error sending public verification email:",
+          emailError,
+        );
+      },
+    );
   } catch (error) {
     console.error("Public resend verification error:", error);
     res.status(500).json({
@@ -747,13 +768,21 @@ export const forgotPassword = async (req, res) => {
       },
     });
 
-    // Send password reset email
-    await sendPasswordResetEmail(user.email, user.fullName, resetToken);
-
+    // Send response response IMMEDIATELY
     res.json({
       success: true,
       message: "If that email exists, a password reset link has been sent.",
     });
+
+    // Send password reset email (BACKGROUND PROCESS)
+    sendPasswordResetEmail(user.email, user.fullName, resetToken).catch(
+      (emailError) => {
+        console.error(
+          "Background error sending password reset email:",
+          emailError,
+        );
+      },
+    );
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({

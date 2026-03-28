@@ -26,6 +26,10 @@ const createTransporter = () => {
       user: emailUser, // Your Gmail address
       pass: emailPassword, // Gmail App Password (whitespace removed automatically)
     },
+    // Optimization for high-latency connections (like Render)
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
   });
 };
 
@@ -41,9 +45,12 @@ export const sendVerificationEmail = async (
   try {
     const transporter = createTransporter();
 
-    await transporter.verify();
+    // Skip verification in production to speed up requests
+    if (process.env.NODE_ENV !== "production") {
+      await transporter.verify();
+    }
 
-    // Frontend verification URL
+    // Use FRONTEND_URL from env or fallback
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
 
@@ -155,7 +162,10 @@ export const sendPasswordResetEmail = async (email, userName, resetToken) => {
   try {
     const transporter = createTransporter();
 
-    await transporter.verify();
+    // Skip verification in production to speed up requests
+    if (process.env.NODE_ENV !== "production") {
+      await transporter.verify();
+    }
 
     // Frontend reset password URL
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
