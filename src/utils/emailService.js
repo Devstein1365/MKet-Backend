@@ -37,17 +37,23 @@ const createTransporter = () => {
 // SEND VERIFICATION EMAIL
 // ===================================
 // Sends email with verification link to confirm user's email address
+// Sends email with verification link to confirm user's email address
 export const sendVerificationEmail = async (
   email,
   userName,
   verificationToken,
 ) => {
+  console.log(
+    `[EmailService] Attempting to send verification email to: ${email}`,
+  );
   try {
     const transporter = createTransporter();
 
     // Skip verification in production to speed up requests
     if (process.env.NODE_ENV !== "production") {
+      console.log("[EmailService] Verifying SMTP connection...");
       await transporter.verify();
+      console.log("[EmailService] SMTP connection verified successfully");
     }
 
     // Use the first URL from FRONTEND_URL for the link
@@ -92,8 +98,8 @@ export const sendVerificationEmail = async (
             }
             .button {
               display: inline-block;
-              background: #7E22CE;
-              color: white;
+              background: #7E22CE !important;
+              color: white !important;
               padding: 15px 30px;
               text-decoration: none;
               border-radius: 5px;
@@ -122,7 +128,7 @@ export const sendVerificationEmail = async (
             <p>Please verify your email address to unlock all features and start buying/selling with your fellow students.</p>
             
             <div style="text-align: center;">
-              <a href="${verificationUrl}" class="button">Verify My Email</a>
+              <a href="${verificationUrl}" class="button" style="color: white; background-color: #7E22CE;">Verify My Email</a>
             </div>
             
             <p style="color: #666; font-size: 14px;">
@@ -145,14 +151,18 @@ export const sendVerificationEmail = async (
       `,
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Verification email sent to ${email}`);
+    console.log("[EmailService] Sending mail...");
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[EmailService] Success! Message ID: ${info.messageId}`);
     return true;
   } catch (error) {
-    console.error(
-      "❌ Error sending verification email:",
-      error?.response || error?.message || error,
-    );
+    console.error("[EmailService] DETAILED ERROR:", {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      stack: error.stack,
+    });
     throw error;
   }
 };
