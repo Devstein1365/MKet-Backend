@@ -566,7 +566,7 @@ export const verifyEmail = async (req, res) => {
       });
     }
 
-    // Mark user as verified
+    // Mark user as verified and clear verification data
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -578,7 +578,7 @@ export const verifyEmail = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Email verified successfully! You can now access all features.",
+      message: "Email verified successfully! You can now login.",
     });
   } catch (error) {
     console.error("Email verification error:", error);
