@@ -16,27 +16,26 @@ import nodemailer from "nodemailer";
 // ===================================
 // Gmail SMTP configuration
 // For production, use a dedicated email service like SendGrid, Mailgun, or AWS SES
-const createTransporter = () => {
-  const emailUser = process.env.EMAIL_USER;
-  const emailPassword = (process.env.EMAIL_PASSWORD || "").replace(/\s+/g, "");
+const emailUser = process.env.EMAIL_USER;
+// Remove any potential whitespace from the app password (common copy-paste issue)
+const emailPassword = (process.env.EMAIL_PASSWORD || "").replace(/\s+/g, "");
 
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: emailUser, // Your Gmail address
-      pass: emailPassword, // Gmail App Password (whitespace removed automatically)
-    },
-    // Optimization for high-latency connections (like Render)
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-  });
-};
+// Create the singleton transporter instance with pooling enabled
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: emailUser, // Your Gmail address
+    pass: emailPassword, // Gmail App Password
+  },
+  // Optimization for high-latency connections (like Render)
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
+});
 
 // ===================================
 // SEND VERIFICATION EMAIL
 // ===================================
-// Sends email with verification link to confirm user's email address
 // Sends email with verification link to confirm user's email address
 export const sendVerificationEmail = async (
   email,
@@ -47,8 +46,6 @@ export const sendVerificationEmail = async (
     `[EmailService] Attempting to send verification email to: ${email}`,
   );
   try {
-    const transporter = createTransporter();
-
     // Skip verification in production to speed up requests
     if (process.env.NODE_ENV !== "production") {
       console.log("[EmailService] Verifying SMTP connection...");
@@ -57,10 +54,8 @@ export const sendVerificationEmail = async (
     }
 
     // Use the first URL from FRONTEND_URL for the link
-    const origins = (process.env.FRONTEND_URL || "http://localhost:1365").split(
-      ",",
-    );
-    const frontendUrl = origins[0];
+    const origins = process.env.FRONTEND_URL || "http://localhost:1365";
+    const frontendUrl = origins;
     const verificationUrl = `${frontendUrl}/verify-email/${verificationToken}`;
 
     const mailOptions = {
@@ -173,18 +168,14 @@ export const sendVerificationEmail = async (
 // Sends email with password reset link
 export const sendPasswordResetEmail = async (email, userName, resetToken) => {
   try {
-    const transporter = createTransporter();
-
     // Skip verification in production to speed up requests
     if (process.env.NODE_ENV !== "production") {
       await transporter.verify();
     }
 
     // Frontend reset password URL (use the first URL from FRONTEND_URL for the link)
-    const origins = (process.env.FRONTEND_URL || "http://localhost:1365").split(
-      ",",
-    );
-    const frontendUrl = origins[0];
+    const origins = process.env.FRONTEND_URL || "http://localhost:1365";
+    const frontendUrl = origins;
     const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
     const mailOptions = {
