@@ -8,8 +8,34 @@ import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
 import { createNotification } from "../controllers/notificationController.js";
 
-// Store online users {userId: socketId}
+// Store online users as userId -> Set<socketId>
 const onlineUsers = new Map();
+
+const addUserSocket = (userId, socketId) => {
+  const existing = onlineUsers.get(userId) || new Set();
+  existing.add(socketId);
+  onlineUsers.set(userId, existing);
+  return existing.size;
+};
+
+const removeUserSocket = (userId, socketId) => {
+  const existing = onlineUsers.get(userId);
+  if (!existing) return 0;
+
+  existing.delete(socketId);
+  if (existing.size === 0) {
+    onlineUsers.delete(userId);
+    return 0;
+  }
+
+  onlineUsers.set(userId, existing);
+  return existing.size;
+};
+
+const isUserOnline = (userId) => {
+  const sockets = onlineUsers.get(userId);
+  return Boolean(sockets && sockets.size > 0);
+};
 
 // ===================================
 // SETUP SOCKET.IO
@@ -58,14 +84,21 @@ export const setupSocket = (io) => {
       `✅ User connected: ${socket.user.fullName} (${socket.userId})`,
     );
 
-    // Add user to online users
-    onlineUsers.set(socket.userId, socket.id);
+    // Add socket for this user (supports multi-tab/device sessions)
+    const connectionsCount = addUserSocket(socket.userId, socket.id);
 
-    // Emit user online status to all clients
-    io.emit("user_online", {
-      userId: socket.userId,
-      user: socket.user,
+    // Send current online users snapshot to the newly connected socket
+    socket.emit("online_users", {
+      userIds: Array.from(onlineUsers.keys()),
     });
+
+    // Emit user_online only on first active connection
+    if (connectionsCount === 1) {
+      io.emit("user_online", {
+        userId: socket.userId,
+        user: socket.user,
+      });
+    }
 
     // ===================================
     // JOIN CONVERSATION ROOM
@@ -127,7 +160,7 @@ export const setupSocket = (io) => {
     // ===================================
     socket.on("send_message", async (data, callback) => {
       try {
-        const { conversationId, text } = data;
+        const { conversationId, text, clientTempId } = data;
 
         if (!text || text.trim() === "") {
           if (typeof callback === "function") {
@@ -185,8 +218,10 @@ export const setupSocket = (io) => {
             ? conversation.user2Id
             : conversation.user1Id;
 
+        const recipientOnline = isUserOnline(recipientId);
+
         // Create notification for recipient if they're not currently online
-        if (!onlineUsers.has(recipientId)) {
+        if (!recipientOnline) {
           await createNotification({
             userId: recipientId,
             type: "NEW_MESSAGE",
@@ -204,11 +239,20 @@ export const setupSocket = (io) => {
           senderId: message.senderId,
           text: message.text,
           isRead: message.isRead,
+          deliveryState: "SENT",
           createdAt: message.createdAt,
           sender: socket.user,
         };
 
         io.to(conversationId).emit("message_received", realtimeMessage);
+
+        // Acknowledge persistence/delivery state back to sender for optimistic UI sync
+        socket.emit("message_delivered", {
+          messageId: message.id,
+          conversationId,
+          clientTempId: clientTempId || null,
+          deliveredToRecipient: recipientOnline,
+        });
 
         if (typeof callback === "function") {
           callback({ success: true, data: realtimeMessage });
@@ -325,13 +369,14 @@ export const setupSocket = (io) => {
         console.error("Failed to update lastLogin:", error);
       }
 
-      // Remove from online users
-      onlineUsers.delete(socket.userId);
+      // Remove this socket; user is offline only when last socket disconnects
+      const remainingConnections = removeUserSocket(socket.userId, socket.id);
 
-      // Emit user offline status
-      io.emit("user_offline", {
-        userId: socket.userId,
-      });
+      if (remainingConnections === 0) {
+        io.emit("user_offline", {
+          userId: socket.userId,
+        });
+      }
     });
 
     // ===================================
