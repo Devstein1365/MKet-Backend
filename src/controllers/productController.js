@@ -31,9 +31,15 @@ export const getAllProducts = async (req, res) => {
     } = req.query;
 
     // Build where clause for filtering
-    const where = {
-      status: "AVAILABLE", // Only show available products
-    };
+    const where = {};
+
+    // By default, only show AVAILABLE or RESERVED products in general search
+    // but if specifically looking for SOLD/ARCHIVED, allow it if status is provided
+    if (req.query.status) {
+      where.status = req.query.status.toUpperCase();
+    } else {
+      where.status = { in: ["AVAILABLE", "RESERVED"] };
+    }
 
     if (category) {
       where.category = category;
@@ -265,11 +271,18 @@ export const createProduct = async (req, res) => {
     }
 
     // Validate status
-    const validStatuses = ["DRAFT", "AVAILABLE"];
-    if (!validStatuses.includes(status.toUpperCase())) {
+    const validStatuses = [
+      "DRAFT",
+      "AVAILABLE",
+      "RESERVED",
+      "SOLD",
+      "ARCHIVED",
+    ];
+    if (status && !validStatuses.includes(status.toUpperCase())) {
       return res.status(400).json({
         success: false,
-        message: "Invalid status. Must be DRAFT or AVAILABLE",
+        message:
+          "Invalid status. Must be DRAFT, AVAILABLE, RESERVED, SOLD, or ARCHIVED",
       });
     }
 
@@ -291,7 +304,7 @@ export const createProduct = async (req, res) => {
         price: priceInKobo,
         originalPrice: originalPriceInKobo,
         location,
-        status: status.toUpperCase(),
+        status: (status || "AVAILABLE").toUpperCase(),
         aiGenerated,
         moderationPassed: true, // TODO: Implement AI moderation
       },
@@ -394,7 +407,47 @@ export const updateProduct = async (req, res) => {
     if (category) updateData.category = category;
     if (condition) updateData.condition = condition.toUpperCase();
     if (location) updateData.location = location;
-    if (status) updateData.status = status.toUpperCase();
+
+    if (status) {
+      const validStatuses = [
+        "DRAFT",
+        "AVAILABLE",
+        "RESERVED",
+        "SOLD",
+        "ARCHIVED",
+      ];
+      if (!validStatuses.includes(status.toUpperCase())) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid status. Must be DRAFT, AVAILABLE, RESERVED, SOLD, or ARCHIVED",
+        });
+      }
+      updateData.status = status.toUpperCase();
+
+      // Update user's total sold count if status is changing to SOLD
+      if (
+        status.toUpperCase() === "SOLD" &&
+        existingProduct.status !== "SOLD"
+      ) {
+        updateData.soldAt = new Date();
+        await prisma.user.update({
+          where: { id: req.userId },
+          data: { totalSold: { increment: 1 } },
+        });
+      }
+      // Decrement total sold if it was SOLD and changing back
+      if (
+        status.toUpperCase() !== "SOLD" &&
+        existingProduct.status === "SOLD"
+      ) {
+        updateData.soldAt = null;
+        await prisma.user.update({
+          where: { id: req.userId },
+          data: { totalSold: { decrement: 1 } },
+        });
+      }
+    }
 
     // Convert prices to kobo if provided
     if (price) {

@@ -174,7 +174,9 @@ enum Condition {
 enum ProductStatus {
   DRAFT      @map("draft")      // Saved in frontend localStorage (not in DB for now)
   AVAILABLE  @map("available")  // Active listing (visible to all users)
+  RESERVED   @map("reserved")   // Item put on hold for a buyer
   SOLD       @map("sold")       // Completed sale (marked by seller)
+  ARCHIVED   @map("archived")   // Hidden by seller (no longer visible, but not deleted)
 }
 
 // ===================================
