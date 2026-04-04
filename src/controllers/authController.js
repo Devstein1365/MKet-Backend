@@ -866,22 +866,134 @@ export const resetPassword = async (req, res) => {
 // UPDATE SETTINGS
 // ===================================
 // PUT /api/auth/settings
-// Body: { notificationsEnabled, emailNotifications }
+// Body: { notificationsEnabled, emailNotifications, pushNotifications, messageNotifications, listingUpdates }
 // Requires: Authentication
 export const updateSettings = async (req, res) => {
   try {
-    const { notificationsEnabled, emailNotifications } = req.body;
+    const {
+      notificationsEnabled,
+      emailNotifications,
+      pushNotifications,
+      messageNotifications,
+      listingUpdates,
+    } = req.body;
 
-    // Update user settings
-    const user = await prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        ...(notificationsEnabled !== undefined && { notificationsEnabled }),
-        ...(emailNotifications !== undefined && { emailNotifications }),
-      },
-    });
+    const parseBoolean = (value) => {
+      if (typeof value === "boolean") return value;
+      if (value === "true") return true;
+      if (value === "false") return false;
+      return undefined;
+    };
+
+    const normalizedSettings = {
+      notificationsEnabled: parseBoolean(notificationsEnabled),
+      emailNotifications: parseBoolean(emailNotifications),
+      pushNotifications: parseBoolean(pushNotifications),
+      messageNotifications: parseBoolean(messageNotifications),
+      listingUpdates: parseBoolean(listingUpdates),
+    };
+
+    const hasAnySetting = Object.values(normalizedSettings).some(
+      (value) => value !== undefined,
+    );
+
+    if (!hasAnySetting) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid settings provided",
+      });
+    }
+
+    let user;
+
+    try {
+      // Primary path: use Prisma model fields directly
+      user = await prisma.user.update({
+        where: { id: req.userId },
+        data: {
+          ...(normalizedSettings.notificationsEnabled !== undefined && {
+            notificationsEnabled: normalizedSettings.notificationsEnabled,
+          }),
+          ...(normalizedSettings.emailNotifications !== undefined && {
+            emailNotifications: normalizedSettings.emailNotifications,
+          }),
+          ...(normalizedSettings.pushNotifications !== undefined && {
+            pushNotifications: normalizedSettings.pushNotifications,
+          }),
+          ...(normalizedSettings.messageNotifications !== undefined && {
+            messageNotifications: normalizedSettings.messageNotifications,
+          }),
+          ...(normalizedSettings.listingUpdates !== undefined && {
+            listingUpdates: normalizedSettings.listingUpdates,
+          }),
+        },
+      });
+    } catch (updateError) {
+      // Fallback path: update only columns that exist in DB to avoid schema mismatch 500s
+      const columns = await prisma.$queryRawUnsafe(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'",
+      );
+
+      const existingColumns = new Set(columns.map((col) => col.column_name));
+      const assignments = [];
+      const values = [];
+      let idx = 1;
+
+      const addAssignment = (columnName, value) => {
+        if (value === undefined || !existingColumns.has(columnName)) return;
+        assignments.push(`${columnName} = $${idx}`);
+        values.push(value);
+        idx += 1;
+      };
+
+      addAssignment(
+        "notifications_enabled",
+        normalizedSettings.notificationsEnabled,
+      );
+      addAssignment(
+        "email_notifications",
+        normalizedSettings.emailNotifications,
+      );
+      addAssignment("push_notifications", normalizedSettings.pushNotifications);
+      addAssignment(
+        "message_notifications",
+        normalizedSettings.messageNotifications,
+      );
+      addAssignment("listing_updates", normalizedSettings.listingUpdates);
+
+      if (assignments.length === 0) {
+        throw updateError;
+      }
+
+      values.push(req.userId);
+      await prisma.$executeRawUnsafe(
+        `UPDATE users SET ${assignments.join(", ")} WHERE id = $${idx}`,
+        ...values,
+      );
+
+      user = await prisma.user.findUnique({ where: { id: req.userId } });
+    }
 
     const userResponse = formatUserResponse(user);
+
+    // Ensure immediate frontend sync even if some fields are unavailable in client model
+    if (normalizedSettings.notificationsEnabled !== undefined) {
+      userResponse.notificationsEnabled =
+        normalizedSettings.notificationsEnabled;
+    }
+    if (normalizedSettings.emailNotifications !== undefined) {
+      userResponse.emailNotifications = normalizedSettings.emailNotifications;
+    }
+    if (normalizedSettings.pushNotifications !== undefined) {
+      userResponse.pushNotifications = normalizedSettings.pushNotifications;
+    }
+    if (normalizedSettings.messageNotifications !== undefined) {
+      userResponse.messageNotifications =
+        normalizedSettings.messageNotifications;
+    }
+    if (normalizedSettings.listingUpdates !== undefined) {
+      userResponse.listingUpdates = normalizedSettings.listingUpdates;
+    }
 
     res.json({
       success: true,

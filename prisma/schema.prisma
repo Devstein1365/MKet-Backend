@@ -72,6 +72,9 @@ model User {
   // Settings
   notificationsEnabled Boolean @default(true) @map("notifications_enabled")
   emailNotifications   Boolean @default(true) @map("email_notifications")
+  pushNotifications    Boolean @default(true) @map("push_notifications")
+  messageNotifications Boolean @default(true) @map("message_notifications")
+  listingUpdates       Boolean @default(true) @map("listing_updates")
   
   // Timestamps
   createdAt DateTime @default(now()) @map("created_at")

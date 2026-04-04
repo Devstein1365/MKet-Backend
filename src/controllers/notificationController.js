@@ -224,11 +224,34 @@ export const createNotification = async ({
     // Check if user has notifications enabled
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { notificationsEnabled: true },
+      select: {
+        notificationsEnabled: true,
+        messageNotifications: true,
+        listingUpdates: true,
+      },
     });
 
     if (!user || !user.notificationsEnabled) {
       return null; // User has disabled notifications
+    }
+
+    const normalizedType = String(type || "").toUpperCase();
+
+    const listingUpdateTypes = new Set([
+      "PRODUCT_SOLD",
+      "PRODUCT_LIKED",
+      "NEW_REVIEW",
+      "PRICE_DROP",
+      "LISTING_APPROVED",
+      "LISTING_REPORTED",
+    ]);
+
+    if (normalizedType === "NEW_MESSAGE" && !user.messageNotifications) {
+      return null;
+    }
+
+    if (listingUpdateTypes.has(normalizedType) && !user.listingUpdates) {
+      return null;
     }
 
     const notification = await prisma.notification.create({
